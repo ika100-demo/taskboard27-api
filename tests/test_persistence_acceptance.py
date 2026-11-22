@@ -258,6 +258,12 @@ def test_silent_database_answers_503_within_6_seconds(
 def test_invalid_body_during_outage_is_still_422(client: TestClient) -> None:  # AC-002.5
     _override(_new_store(_closed_port_url()))
     assert _post(client, {"title": "  "}).status_code == 422
+    valid = _post(client, {"title": "valid"})
+    assert valid.status_code == 503
+    assert valid.json() == UNAVAILABLE
+    listed = client.get("/tasks")
+    assert listed.status_code == 503
+    assert listed.json() == UNAVAILABLE
 
 
 # AC-002.6

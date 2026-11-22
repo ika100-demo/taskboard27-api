@@ -75,12 +75,16 @@ def fill_tasks(database_url: str) -> Callable[[int], None]:
     """Insert n tasks straight into the database by SQL (creating the schema first)."""
 
     def _fill(n: int) -> None:
-        from taskboard27_api.tasks.store import TaskStore
-
-        TaskStore(database_url).ensure_schema()
         import psycopg
 
         with psycopg.connect(database_url) as conn:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS tasks ("
+                "seq BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "
+                "id UUID NOT NULL UNIQUE, "
+                "title TEXT NOT NULL CHECK (char_length(title) BETWEEN 1 AND 200), "
+                "due_date DATE NULL)"
+            )
             conn.execute(
                 "INSERT INTO tasks (id, title, due_date) "
                 "SELECT gen_random_uuid(), 't' || g, NULL FROM generate_series(1, %s) g",
