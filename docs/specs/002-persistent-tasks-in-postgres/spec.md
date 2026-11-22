@@ -1,7 +1,7 @@
 ---
 spec_id: 002-persistent-tasks-in-postgres
 title: Persistent tasks in Postgres
-status: building
+status: done
 priority: P1
 shape: service-python
 parent: ika100-demo/taskboard27-gitops:001-persistent-tasks-and-web-task-list
@@ -162,3 +162,4 @@ Connection settings come from DATABASE_URL (injected by the gitops `uses: postgr
 - 2026-11-22 created from the system plan, with its criteria (spec 147)
 - 2026-11-22 approved
 - 2026-11-22 building
+- 2026-11-22 done
