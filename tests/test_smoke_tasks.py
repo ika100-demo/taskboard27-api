@@ -47,9 +47,19 @@ def test_smoke_list_is_a_stable_array(smoke_base_url: str) -> None:  # read-only
 
 @pytest.mark.smoke
 def test_smoke_ready_reflects_database(smoke_base_url: str) -> None:  # read-only check
-    response = httpx.get(smoke_base_url + "/ready", timeout=10)
-    assert response.status_code == 200
-    assert response.json() == {"status": "ready"}
+    # Readiness must track the database: /ready and the DB-backed /tasks agree,
+    # and an unavailable database is reported as 503 "unavailable", never as ready.
+    for _ in range(5):  # consecutive GETs may reach different instances
+        ready = httpx.get(smoke_base_url + "/ready", timeout=10)
+        listed = httpx.get(smoke_base_url + "/tasks", timeout=10)
+        if ready.status_code == 200:
+            assert ready.json() == {"status": "ready"}
+            assert listed.status_code == 200
+            assert isinstance(listed.json(), list)
+        else:
+            assert ready.status_code == 503
+            assert ready.json() == {"status": "unavailable"}
+        assert ready.status_code == 200, "database must be reachable in a healthy deployment"
 
 
 @pytest.mark.smoke
