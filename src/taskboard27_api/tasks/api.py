@@ -14,10 +14,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, StrictStr, field_validator
 from pydantic_core import PydanticCustomError
 
-from .store import MAX_TASKS, TaskLimitReached, TaskStore, get_task_store
+from .store import MAX_TASKS, StorageUnavailable, TaskLimitReached, TaskStore, get_task_store
 
 logger = structlog.get_logger()
 
+UNAVAILABLE_MESSAGE: Final = "task storage unavailable"
 MAX_TITLE_LENGTH = 200
 TITLE_MESSAGE: Final = "Enter a title of 1 to 200 characters"
 _DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -78,6 +79,8 @@ def create_task(body: TaskCreate, store: StoreDep) -> TaskOut:
         task = store.add(body.title, body.due_date)
     except TaskLimitReached:
         raise HTTPException(status_code=409, detail=f"task limit of {MAX_TASKS} reached") from None
+    except StorageUnavailable:
+        raise HTTPException(status_code=503, detail=UNAVAILABLE_MESSAGE) from None
     logger.info("task_created", task_id=task.id)
     return TaskOut(id=task.id, title=task.title, due_date=task.due_date)
 
@@ -85,4 +88,8 @@ def create_task(body: TaskCreate, store: StoreDep) -> TaskOut:
 @router.get("/tasks", response_model=list[TaskOut])
 def list_tasks(store: StoreDep) -> list[TaskOut]:
     """List all tasks, oldest first."""
-    return [TaskOut(id=t.id, title=t.title, due_date=t.due_date) for t in store.list()]
+    try:
+        tasks = store.list()
+    except StorageUnavailable:
+        raise HTTPException(status_code=503, detail=UNAVAILABLE_MESSAGE) from None
+    return [TaskOut(id=t.id, title=t.title, due_date=t.due_date) for t in tasks]
