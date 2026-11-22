@@ -10,6 +10,7 @@ tasks:
     covers: [AC-001.3, AC-001.6, AC-001.7]
     parallel_safe: true
     depends_on: []
+    done: true
   - id: t2
     title: Add POST /tasks and GET /tasks and wire them into the app
     files: [src/taskboard27_api/tasks/__init__.py, src/taskboard27_api/tasks/api.py, src/taskboard27_api/main.py]
