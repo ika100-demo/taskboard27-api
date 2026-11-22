@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import pytest
@@ -25,13 +25,13 @@ def _install_store(store: Any) -> None:
 
 
 @pytest.fixture(autouse=True)
-def fresh_store() -> Iterator[None]:
+def fresh_store(database_url: str) -> Iterator[None]:
     try:
         from taskboard27_api.tasks import store as mod
     except ImportError:
         yield  # tests fail on the missing endpoint / module
         return
-    _install_store(mod.TaskStore())
+    _install_store(mod.TaskStore(database_url))
     yield
     app.dependency_overrides.clear()
 
@@ -132,21 +132,11 @@ def test_past_due_date_accepted(client: TestClient) -> None:  # AC-001.5
     assert response.json()["due_date"] == "2000-01-01"
 
 
-def test_task_limit_returns_409(client: TestClient) -> None:  # AC-001.6
-    mod = _store_module()
-    store = mod.TaskStore()
-    for i in range(1000):
-        store.add(f"t{i}", None)
-    _install_store(store)
+def test_task_limit_returns_409(
+    client: TestClient, fill_tasks: Callable[[int], None]
+) -> None:  # AC-001.6
+    fill_tasks(1000)
     response = _post(client, {"title": "one too many"})
     assert response.status_code == 409
     assert response.json() == {"detail": "task limit of 1000 reached"}
     assert len(_listed(client)) == 1000
-
-
-def test_restart_empties_list(client: TestClient) -> None:  # AC-001.7
-    mod = _store_module()
-    assert _post(client, {"title": "A"}).status_code == 201
-    assert len(_listed(client)) == 1
-    _install_store(mod.TaskStore())  # the restart
-    assert _listed(client) == []
