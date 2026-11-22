@@ -85,6 +85,82 @@ def silent_listener() -> Iterator[str]:
         server.close()
 
 
+class _Proxy:
+    """A TCP forwarder in front of the test database that can be switched off and on."""
+
+    def __init__(self, target_host: str, target_port: int) -> None:
+        self._target = (target_host, target_port)
+        self._lock = threading.Lock()
+        self._socks: list[socket.socket] = []
+        self._server: socket.socket | None = None
+        self.port = 0
+
+    def start(self) -> None:
+        server = socket.socket()
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind(("127.0.0.1", self.port))
+        server.listen(16)
+        self.port = server.getsockname()[1]
+        self._server = server
+        threading.Thread(target=self._accept, args=(server,), daemon=True).start()
+
+    def stop(self) -> None:
+        with self._lock:
+            socks, self._socks = self._socks, []
+        if self._server is not None:
+            self._server.close()
+            self._server = None
+        for sock in socks:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            sock.close()
+
+    def _accept(self, server: socket.socket) -> None:
+        while True:
+            try:
+                client, _ = server.accept()
+                upstream = socket.create_connection(self._target, timeout=5)
+            except OSError:
+                if self._server is not server:
+                    return
+                continue
+            with self._lock:
+                self._socks += [client, upstream]
+            for src, dst in ((client, upstream), (upstream, client)):
+                threading.Thread(target=self._pipe, args=(src, dst), daemon=True).start()
+
+    @staticmethod
+    def _pipe(src: socket.socket, dst: socket.socket) -> None:
+        try:
+            while data := src.recv(65536):
+                dst.sendall(data)
+        except OSError:
+            pass
+        finally:
+            for sock in (src, dst):
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+
+@pytest.fixture()
+def db_proxy(database_url: str) -> Iterator[tuple[_Proxy, str]]:
+    """(proxy, URL of the test database through the proxy)."""
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(database_url)
+    proxy = _Proxy(parts.hostname or "127.0.0.1", parts.port or 5432)
+    proxy.start()
+    try:
+        old = f"{parts.hostname}:{parts.port}"
+        yield proxy, database_url.replace(old, f"127.0.0.1:{proxy.port}")
+    finally:
+        proxy.stop()
+
+
 # AC-002.1
 
 
@@ -212,15 +288,25 @@ def test_concurrent_posts_at_999_stored_give_one_201(
 
 
 def test_unreachable_database_answers_503_and_stores_nothing(
-    client: TestClient, database_url: str, count_tasks: Callable[[], int]
+    client: TestClient, db_proxy: tuple[_Proxy, str], count_tasks: Callable[[], int]
 ) -> None:  # AC-002.5
-    before = _post(client, {"title": "before"}).json()
-    _override(_new_store(_closed_port_url()))
-    start = time.monotonic()
-    posted = _post(client, {"title": "during"})
-    listed = client.get("/tasks")
-    ready = client.get("/ready")
-    assert time.monotonic() - start < 12  # 6 s each for the two task requests
+    proxy, url = db_proxy
+    _override(_new_store(url))  # the same store for the whole test: no restart
+    before = _post(client, {"title": "before"})
+    assert before.status_code == 201
+
+    proxy.stop()  # the database becomes unreachable
+    timed: list[tuple[Any, float]] = []
+    for send in (
+        lambda: _post(client, {"title": "during"}),
+        lambda: client.get("/tasks"),
+        lambda: client.get("/ready"),
+    ):
+        start = time.monotonic()
+        response = send()
+        timed.append((response, time.monotonic() - start))
+    posted, listed, ready = (r for r, _ in timed)
+    assert all(elapsed < 6 for _, elapsed in timed)
     assert posted.status_code == 503
     assert posted.json() == UNAVAILABLE
     assert listed.status_code == 503
@@ -229,10 +315,10 @@ def test_unreachable_database_answers_503_and_stores_nothing(
     assert ready.json() == {"status": "unavailable"}
     assert client.get("/health").status_code == 200
 
-    _override(_new_store(database_url))  # the database is back
+    proxy.start()  # the database is back; the next requests reconnect by themselves
     assert client.get("/ready").status_code == 200
     assert client.get("/ready").json() == {"status": "ready"}
-    assert client.get("/tasks").json() == [before]
+    assert client.get("/tasks").json() == [before.json()]
     assert count_tasks() == 1
 
 
@@ -290,6 +376,8 @@ def test_title_errors_carry_rule_ids(
     assert response.status_code == 422
     items = [e for e in response.json()["detail"] if e["loc"][-1] == "title"]
     assert len(items) == 1
+    assert items[0]["loc"] == ["body", "title"]
+    assert "input" in items[0]
     assert items[0]["type"] == error_type
     assert items[0]["msg"] == "Enter a title of 1 to 200 characters"
     assert client.get("/tasks").json() == []

@@ -38,7 +38,7 @@ def test_smoke_created_task_is_listed_every_time(smoke_base_url: str) -> None:  
 
 
 @pytest.mark.smoke
-def test_smoke_list_is_a_stable_array(smoke_base_url: str) -> None:  # AC-002.3
+def test_smoke_list_is_a_stable_array(smoke_base_url: str) -> None:  # read-only check
     for _ in range(3):
         response = httpx.get(smoke_base_url + "/tasks", timeout=10)
         assert response.status_code == 200
@@ -46,7 +46,7 @@ def test_smoke_list_is_a_stable_array(smoke_base_url: str) -> None:  # AC-002.3
 
 
 @pytest.mark.smoke
-def test_smoke_ready_reflects_database(smoke_base_url: str) -> None:  # AC-002.5
+def test_smoke_ready_reflects_database(smoke_base_url: str) -> None:  # read-only check
     response = httpx.get(smoke_base_url + "/ready", timeout=10)
     assert response.status_code == 200
     assert response.json() == {"status": "ready"}
