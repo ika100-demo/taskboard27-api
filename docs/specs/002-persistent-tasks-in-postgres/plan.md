@@ -10,12 +10,14 @@ tasks:
     covers: [AC-002.1, AC-002.2, AC-002.3, AC-002.4, AC-002.5]
     parallel_safe: true
     depends_on: []
+    done: true
   - id: t2
     title: Title validation errors carry the contract rule ids
     files: [src/taskboard27_api/tasks/api.py, src/taskboard27_api/main.py]
     covers: [AC-002.6]
     parallel_safe: true
     depends_on: []
+    done: true
   - id: t3
     title: 503 on storage outage, DB-aware /ready, schema setup at startup
     files: [src/taskboard27_api/tasks/api.py, src/taskboard27_api/main.py]
