@@ -26,7 +26,7 @@ As a taskboard user, I want to list all tasks I created, so that I can see what 
 - **AC-001.4** Given a running service, when a client sends `POST /tasks` with the title missing, not a string, empty or only whitespace after trimming, or longer than 200 characters after trimming, then the response is `422` with an error naming the field `title`, and `GET /tasks` shows no new task; a title with surrounding spaces is stored trimmed (`"  Buy milk  "` becomes `"Buy milk"`).
 - **AC-001.5** Given a running service, when a client sends `POST /tasks` with a `due_date` that is not a calendar date in `YYYY-MM-DD` form (for example `"tomorrow"`, `"2026-02-30"` or `"2026-12-01T10:00:00Z"`), then the response is `422` with an error naming the field `due_date`, and no task is created; a date in the past is accepted.
 - **AC-001.6** Given 1000 tasks already held, when a client sends another valid `POST /tasks`, then the response is `409` with the message `"task limit of 1000 reached"` and the list still holds 1000 tasks.
-- **AC-001.7** Given tasks were created, when the service process is restarted, then `GET /tasks` returns `[]`, because tasks live only in the service's memory.
+- ~~**AC-001.7**~~ superseded by AC-002.1 on 2026-11-22: Given tasks were created, when the service process is restarted, then `GET /tasks` returns `[]`, because tasks live only in the service's memory.
 
 ## Non-goals
 
@@ -60,3 +60,4 @@ As a taskboard user, I want to list all tasks I created, so that I can see what 
 - 2026-11-22 approved
 - 2026-11-22 building
 - 2026-11-22 done
+- 2026-11-22 AC-001.7 superseded by AC-002.1
