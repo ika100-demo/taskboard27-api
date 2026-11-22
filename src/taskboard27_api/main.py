@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import Response
 from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -14,6 +15,7 @@ from . import __version__
 from .logging_config import configure_logging
 from .metrics import MetricsMiddleware
 from .tasks import router as tasks_router
+from .tasks.api import title_required_handler
 from .tracing import configure_tracing, tracing_enabled
 
 configure_logging(level=os.environ.get("LOG_LEVEL", "INFO"))
@@ -25,6 +27,7 @@ app.add_middleware(MetricsMiddleware)
 if tracing_enabled():
     FastAPIInstrumentor.instrument_app(app)
 app.include_router(tasks_router)
+app.add_exception_handler(RequestValidationError, title_required_handler)  # type: ignore[arg-type]
 
 
 class HealthResponse(BaseModel):

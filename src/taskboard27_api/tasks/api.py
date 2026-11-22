@@ -4,17 +4,22 @@ from __future__ import annotations
 
 import re
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Final
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, StrictStr, field_validator
+from pydantic_core import PydanticCustomError
 
 from .store import MAX_TASKS, TaskLimitReached, TaskStore, get_task_store
 
 logger = structlog.get_logger()
 
 MAX_TITLE_LENGTH = 200
+TITLE_MESSAGE: Final = "Enter a title of 1 to 200 characters"
 _DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
@@ -26,8 +31,10 @@ class TaskCreate(BaseModel):
     @classmethod
     def _check_title(cls, value: str) -> str:
         value = value.strip()
-        if not 1 <= len(value) <= MAX_TITLE_LENGTH:
-            raise ValueError(f"title must be 1 to {MAX_TITLE_LENGTH} characters")
+        if len(value) == 0:
+            raise PydanticCustomError("title-min", TITLE_MESSAGE)
+        if len(value) > MAX_TITLE_LENGTH:
+            raise PydanticCustomError("title-max", TITLE_MESSAGE)
         return value
 
     @field_validator("due_date")
@@ -48,6 +55,16 @@ class TaskOut(BaseModel):
     id: str
     title: str
     due_date: str | None
+
+
+async def title_required_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """422 in the standard body; a missing title carries the contract rule id."""
+    errors = []
+    for error in exc.errors():
+        if error.get("type") == "missing" and tuple(error.get("loc", ())) == ("body", "title"):
+            error = {**error, "type": "title-required", "msg": TITLE_MESSAGE}
+        errors.append(error)
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
 
 
 router = APIRouter()
