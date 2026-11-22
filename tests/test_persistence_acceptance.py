@@ -108,8 +108,12 @@ class _Proxy:
         with self._lock:
             socks, self._socks = self._socks, []
         if self._server is not None:
-            self._server.close()
-            self._server = None
+            server, self._server = self._server, None
+            try:
+                server.shutdown(socket.SHUT_RDWR)  # wakes a blocked accept() on Linux
+            except OSError:
+                pass
+            server.close()
         for sock in socks:
             try:
                 sock.shutdown(socket.SHUT_RDWR)
@@ -121,6 +125,9 @@ class _Proxy:
         while True:
             try:
                 client, _ = server.accept()
+                if self._server is not server:  # stopped meanwhile: refuse
+                    client.close()
+                    return
                 upstream = socket.create_connection(self._target, timeout=5)
             except OSError:
                 if self._server is not server:
